@@ -63,7 +63,7 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 		double y0 = particles[i].y;
 		double theta0 = particles[i].theta;
 
-		if (fabs(yaw_rate) < 0.001)
+		if (fabs(yaw_rate) < 0.00001)
 		{
 			particles[i].x = x0+velocity*delta_t*cos(theta0)+noise_x(generator);
 			particles[i].y = y0+velocity*delta_t*sin(theta0)+noise_y(generator);
@@ -129,47 +129,85 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 	{
 		Particle particle = particles[i];
 
-		// Predict where landmarks are in VEHICLE coordinate system
-		std::vector<LandmarkObs> landmarks_predicted;
-		for (size_t p=0;p<map_landmarks.landmark_list.size();p++)
-		{
-			double x_diff = map_landmarks.landmark_list[p].x_f-particle.x;
-			double y_diff = map_landmarks.landmark_list[p].y_f-particle.y;
+		//		// Predict where landmarks are in VEHICLE coordinate system
+		//		std::vector<LandmarkObs> landmarks_predicted;
+		//		for (size_t p=0;p<map_landmarks.landmark_list.size();p++)
+		//		{
+		//			double x_diff = map_landmarks.landmark_list[p].x_f-particle.x;
+		//			double y_diff = map_landmarks.landmark_list[p].y_f-particle.y;
+		//
+		//
+		//			LandmarkObs landmark_predicted;
+		//			landmark_predicted.id = map_landmarks.landmark_list[p].id_i;
+		//			landmark_predicted.x = cos(particle.theta)*x_diff+sin(particle.theta)*y_diff;
+		//			landmark_predicted.y = -sin(particle.theta)*x_diff+cos(particle.theta)*y_diff;
+		//
+		//			double landmark_dist_squared = landmark_predicted.x*landmark_predicted.x+landmark_predicted.y*landmark_predicted.y;
+		//			if (landmark_dist_squared <= sensor_range*sensor_range)
+		//				landmarks_predicted.push_back(landmark_predicted);
+		//		}
+		//
+		//		// Associate nearest landmarks
+		//		dataAssociation(landmarks_predicted, observations);
 
-
-			LandmarkObs landmark_predicted;
-			landmark_predicted.id = map_landmarks.landmark_list[p].id_i;
-			landmark_predicted.x = cos(particle.theta)*x_diff+sin(particle.theta)*y_diff;
-			landmark_predicted.y = -sin(particle.theta)*x_diff+cos(particle.theta)*y_diff;
-
-			double landmark_dist_squared = landmark_predicted.x*landmark_predicted.x+landmark_predicted.y*landmark_predicted.y;
-			if (landmark_dist_squared <= sensor_range*sensor_range)
-				landmarks_predicted.push_back(landmark_predicted);
-		}
-
-		// Associate nearest landmarks
-		dataAssociation(landmarks_predicted, observations);
-
-		// Transform observations into MAP coordinate system (used by simulator)
+		// Transform observations into MAP coordinate system
 		std::vector<LandmarkObs> observations_transformed;
-		std::vector<int> associations;
-		std::vector<double> sense_x;
-		std::vector<double> sense_y;
 		for (size_t o=0;o<observations.size();o++)
 		{
 			LandmarkObs obs = observations[o];
 
-			if (obs.id >= 0) // If it is associated with a landmark
-			{
-				// Transform measurement from VEHICLE coordinate system to MAP coordinate system
-				double transformed_x = particle.x+obs.x*cos(particle.theta)-obs.y*sin(particle.theta);
-				double transformed_y = particle.y+obs.x*sin(particle.theta)+obs.y*cos(particle.theta);
+			//			if (obs.id >= 0) // If it is associated with a landmark
+			//			{
+			// Transform measurement from VEHICLE coordinate system to MAP coordinate system
+			LandmarkObs obs_transformed;
+			obs_transformed.x = particle.x+obs.x*cos(particle.theta)-obs.y*sin(particle.theta);
+			obs_transformed.y = particle.y+obs.x*sin(particle.theta)+obs.y*cos(particle.theta);
+			obs_transformed.id = -1; // Not yet associated
 
-				associations.push_back(landmarks_predicted[obs.id].id);
-				sense_x.push_back(transformed_x);
-				sense_y.push_back(transformed_y);
+			observations_transformed.push_back(obs_transformed);
+
+			//				associations.push_back(landmarks_predicted[obs.id].id);
+			//				sense_x.push_back(transformed_x);
+			//				sense_y.push_back(transformed_y);
+			//			}
+		}
+
+		std::vector<LandmarkObs> predictions;
+		for (size_t p=0;p<map_landmarks.landmark_list.size();p++) {
+			LandmarkObs prediction;
+
+			prediction.x  = map_landmarks.landmark_list[p].x_f;
+			prediction.y  = map_landmarks.landmark_list[p].y_f;
+			prediction.id = map_landmarks.landmark_list[p].id_i;
+			float distance =  dist(prediction.x, prediction.y, particle.x, particle.y); //px, py are particle x and y positions
+
+			if (distance < sensor_range) {
+				predictions.push_back(prediction);
 			}
 		}
+
+		// Associate nearest landmarks
+		dataAssociation(predictions, observations_transformed);
+
+		// Set associations for visualization in simulator
+		std::vector<int> associations;
+		std::vector<double> sense_x;
+		std::vector<double> sense_y;
+		for (size_t o=0;o<observations_transformed.size();o++)
+		{
+			LandmarkObs obs = observations_transformed[o];
+			if (obs.id >= 0)
+			{
+				associations.push_back(predictions[obs.id].id);
+				sense_x.push_back(obs.x);
+				sense_y.push_back(obs.y);
+			}
+		}
+
+
+		//
+		//
+		//
 		particles[i] = SetAssociations(particle, associations, sense_x, sense_y);
 
 		// Calculate particle weights
@@ -179,10 +217,10 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 		{
 			if (observations[o].id >= 0)
 			{
-				double x = observations[o].x;
-				double ux = landmarks_predicted[observations[o].id].x;
-				double y = observations[o].y;
-				double uy = landmarks_predicted[observations[o].id].y;
+				double x = observations_transformed[o].x;
+				double ux = predictions[observations_transformed[o].id].x;
+				double y = observations_transformed[o].y;
+				double uy = predictions[observations_transformed[o].id].y;
 				double x_diff = x-ux;
 				double y_diff = y-uy;
 				particles[i].weight *= normalizer*exp(-(x_diff*x_diff/(2.0*std_landmark[0]*std_landmark[0])+y_diff*y_diff/(2.0*std_landmark[1]*std_landmark[1])));
