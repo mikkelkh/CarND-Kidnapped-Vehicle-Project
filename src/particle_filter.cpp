@@ -87,7 +87,7 @@ void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::ve
 
 	for (size_t o=0;o<observations.size();o++)
 	{
-		observations[o].id = 0;
+		observations[o].id = -1;
 		LandmarkObs obs = observations[o];
 		double min_dist = std::numeric_limits<double>::max();
 
@@ -159,7 +159,7 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 		{
 			LandmarkObs obs = observations[o];
 
-			if (obs.id != 0) // If it is associated with a landmark
+			if (obs.id >= 0) // If it is associated with a landmark
 			{
 				// Transform measurement from VEHICLE coordinate system to MAP coordinate system
 				double transformed_x = particle.x+obs.x*cos(particle.theta)-obs.y*sin(particle.theta);
@@ -177,7 +177,7 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 		bool has_observations = false;
 		for (size_t o=0;o<observations.size();o++)
 		{
-			if (observations[o].id != 0)
+			if (observations[o].id >= 0)
 			{
 				double x = observations[o].x;
 				double ux = landmarks_predicted[observations[o].id].x;
